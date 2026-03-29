@@ -14,4 +14,4 @@
 
 ## Submission Time
 
-Please provide the submission time or date; either is fine.
+<!-- Please provide the submission time or date; either is fine. -->
