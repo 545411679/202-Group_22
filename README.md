@@ -132,7 +132,7 @@ Download: https://git-scm.com/downloads
 ---
 
 # How to Run
-##case 2: not first run but later test run:
+## case 2: not first run but later test run:
 in /Backend folder. 1. open terminal, 2. run:
 ```bash
 ./mvnw spring-boot:run        # Linux / macOS
@@ -144,7 +144,7 @@ npm run dev
 ```
 then press ctrl+click open link of frontend.
 
-##case 1: first time run: mysql setup and project dependencies install
+## case 1: first time run: mysql setup and project dependencies install
 ### (1. Database (MySQL)
 
 The application creates and seeds the database automatically on first startup. You only need to create an empty schema:
