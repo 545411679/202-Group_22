@@ -71,7 +71,11 @@ Authentication is JWT-based. The token is stored in `localStorage` and attached 
 
 # Prerequisites
 
-The following must be installed before running the project. If starting from a clean machine, install in the order listed.
+git clone this repo,(run this:
+```bash
+git clone https://github.com/545411679/202-Group_22.git
+```
+then check all following are available(or install missing ones), before running project code.
 
 ### Java 17 (if you have java 17or 17+, skip this step)(check by running java -version)
 install:
