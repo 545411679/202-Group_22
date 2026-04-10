@@ -1,0 +1,40 @@
+# ===== OS =====
+.DS_Store
+Thumbs.db
+
+# ===== IDE =====
+.idea/
+.cursor/
+.vscode/
+*.iml
+# Eclipse
+.classpath
+.project
+.settings/
+*.launch
+
+# ===== Logs =====
+*.log
+
+# ===== Java =====
+target/
+*.class
+
+# ===== Maven / Gradle =====
+build/
+.gradle/
+
+# ===== Node =====
+node_modules/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ===== Env =====
+.env
+.env.*
+
+# ===== Others =====
+*.tmp
+*.swp
