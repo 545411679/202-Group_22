@@ -138,7 +138,7 @@ in /Backend folder. 1. open terminal, 2. run:
 ./mvnw spring-boot:run        # Linux / macOS
 ```
 ```bash
-mvnw.cmd spring-boot:run      # Windows
+.\mvnw.cmd spring-boot:run      # Windows
 ```
 then in /Frontend folder, 3. open terminal, 4. run:
 ```bash
