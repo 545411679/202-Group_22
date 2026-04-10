@@ -132,8 +132,20 @@ Download: https://git-scm.com/downloads
 ---
 
 # How to Run
+##case 2: not first run but later test run:
+in /Backend folder. 1. open terminal, 2. run:
+```bash
+./mvnw spring-boot:run        # Linux / macOS
+mvnw.cmd spring-boot:run      # Windows
+```
+then in /Frontend folder, 3. open terminal, 4. run:
+```bash
+npm run dev
+```
+then press ctrl+click open link of frontend.
 
-### 1. Database (MySQL)
+##case 1: first time run: mysql setup and project dependencies install
+### (1. Database (MySQL)
 
 The application creates and seeds the database automatically on first startup. You only need to create an empty schema:
 
@@ -152,7 +164,7 @@ spring.datasource.username=root
 spring.datasource.password=123456
 ```
 
-### 2. Backend (Spring Boot)
+### (2. Backend (Spring Boot)
 
 Open a terminal in the project root:
 
