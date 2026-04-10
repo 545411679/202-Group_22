@@ -1,4 +1,4 @@
-# Specialist Consultation Booking System
+# Group22's Specialist Consultation Booking System
 
 **CPT202 Software Engineering — Group Project, Sprint 1**
 Xi'an Jiaotong-Liverpool University · Year 3, Semester 2 · Group 22
@@ -69,16 +69,15 @@ Authentication is JWT-based. The token is stored in `localStorage` and attached 
 
 ---
 
-## Prerequisites
+# Prerequisites
 
 The following must be installed before running the project. If starting from a clean machine, install in the order listed.
 
-### Java 17
-
+### Java 17 (if you have java 17or 17+, skip this step)(check by running java -version)
+install:
 Spring Boot 3.x requires Java 17 or higher. Java 21 also works.
 
-Download: https://adoptium.net/temurin/releases/?version=17
-
+Download: search in browser, find one
 Choose the **JDK** (not JRE), select your OS, and run the installer. To verify:
 
 ```bash
@@ -88,7 +87,7 @@ java -version
 
 If `java -version` is not recognised after install, add the JDK `bin` directory to your system `PATH`. On Windows: System Properties → Environment Variables → Path → Add `C:\Program Files\Eclipse Adoptium\jdk-17.x.x\bin` (adjust to your install path).
 
-### Maven
+### Maven(dont need manual install. when running this in /Backend folder, maven will auto install: .\mvnw spring-boot:run)
 
 The backend includes the Maven wrapper (`mvnw` / `mvnw.cmd`), so a global Maven install is not required. The wrapper downloads Maven 3.9 automatically on first use, provided Java is on your `PATH`.
 
@@ -99,7 +98,7 @@ If you prefer a global install: https://maven.apache.org/download.cgi
 Download: https://dev.mysql.com/downloads/installer/
 
 The **MySQL Installer (Windows)** or **MySQL Community Server** is sufficient. During setup:
-- Set root password (the project defaults to `123456` — change if needed, see step 1 below)
+- Set root password (the project defaults to `123456`)
 - Keep default port `3306`
 - Enable "Start MySQL Service on system startup"
 
@@ -132,7 +131,7 @@ Download: https://git-scm.com/downloads
 
 ---
 
-## How to Run
+# How to Run
 
 ### 1. Database (MySQL)
 
@@ -148,11 +147,9 @@ Or in MySQL Workbench, run:
 CREATE DATABASE IF NOT EXISTS consult_db;
 ```
 
-If your MySQL root password is not `123456`, open `Backend/src/main/resources/application.properties` and update:
-
 ```properties
 spring.datasource.username=root
-spring.datasource.password=your_password_here
+spring.datasource.password=123456
 ```
 
 ### 2. Backend (Spring Boot)
