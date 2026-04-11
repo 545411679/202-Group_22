@@ -1,7 +1,7 @@
 # Group22's Specialist Consultation Booking System
 
-**CPT202 Software Engineering — Group Project, Sprint 1**
-Xi'an Jiaotong-Liverpool University · Year 3, Semester 2 · Group 22
+**202 Software Engineering — Group Project, Sprint 1**
+Year 3, Semester 2 · Group 22
 
 ---
 
