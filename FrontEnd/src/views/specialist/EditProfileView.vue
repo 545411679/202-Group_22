@@ -11,6 +11,28 @@
       <div class="page-title">
         My profile
         <el-tag v-if="currentStatus" :type="statusTagType" style="margin-left:10px">{{ currentStatus }}</el-tag>
+        <div class="status-actions" v-if="currentStatus && (currentStatus === 'ACTIVE' || currentStatus === 'PAUSED')">
+          <el-button
+            v-if="currentStatus === 'ACTIVE'"
+            type="warning"
+            size="small"
+            plain
+            :loading="updatingStatus"
+            @click="handleSetStatus('PAUSED')"
+          >
+            Pause Profile
+          </el-button>
+          <el-button
+            v-if="currentStatus === 'PAUSED'"
+            type="success"
+            size="small"
+            plain
+            :loading="updatingStatus"
+            @click="handleSetStatus('ACTIVE')"
+          >
+            Activate Profile
+          </el-button>
+        </div>
       </div>
       <div v-if="currentStatus === 'PENDING'" class="pending-note">Under review — profile will go live once approved by admin.</div>
       <div v-if="currentStatus === 'REJECTED'" class="reject-note">Rejected — update and resubmit.</div>
@@ -56,6 +78,7 @@ import { useAuthStore } from '../../stores/auth'
 const authStore = useAuthStore()
 const loading = ref(true)
 const saving = ref(false)
+const updatingStatus = ref(false)
 const categories = ref([])
 const currentStatus = ref(null)
 const isNew = ref(false)
@@ -95,6 +118,19 @@ async function handleSave() {
   }
 }
 
+async function handleSetStatus(newStatus) {
+  updatingStatus.value = true
+  try {
+    await specialistApi.updateStatus({ status: newStatus })
+    ElMessage.success(`Profile status set to ${newStatus}`)
+    currentStatus.value = newStatus
+  } catch (err) {
+    ElMessage.error(err.response?.data?.message || 'Failed to update status')
+  } finally {
+    updatingStatus.value = false
+  }
+}
+
 onMounted(async () => {
   try {
     categories.value = (await categoryApi.getAll()).data || []
@@ -120,7 +156,8 @@ onMounted(async () => {
 
 <style scoped>
 .profile-wrap { max-width: 640px; }
-.page-title { font-size: 18px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; }
+.page-title { font-size: 18px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.status-actions { display: flex; gap: 8px; }
 .pending-note { font-size: 13px; color: #e6a23c; margin-bottom: 12px; }
 .reject-note  { font-size: 13px; color: #f56c6c; margin-bottom: 12px; }
 </style>
