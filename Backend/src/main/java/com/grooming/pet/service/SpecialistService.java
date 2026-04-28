@@ -8,6 +8,8 @@ import com.grooming.pet.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -139,11 +141,23 @@ public class SpecialistService {
         return toProfileResponse(specialist);
     }
 
-    public List<SpecialistSummaryResponse> search(String name, String category, String level) {
+    public List<SpecialistSummaryResponse> search(String name, String category, String level,
+                                               LocalDate slotDate, LocalTime startTime, LocalTime endTime) {
         String nameParam = (name != null && !name.isBlank()) ? name : null;
         String categoryParam = (category != null && !category.isBlank()) ? category : null;
         String levelParam = (level != null && !level.isBlank()) ? level : null;
-        return specialistRepository.search(nameParam, categoryParam, levelParam).stream()
+
+        List<Specialist> specialists;
+        if (slotDate != null) {
+            LocalTime startTimeParam = (startTime != null) ? startTime : null;
+            LocalTime endTimeParam = (endTime != null) ? endTime : null;
+            specialists = specialistRepository.searchWithTimeSlot(nameParam, categoryParam, levelParam,
+                    slotDate, startTimeParam, endTimeParam);
+        } else {
+            specialists = specialistRepository.search(nameParam, categoryParam, levelParam);
+        }
+
+        return specialists.stream()
                 .map(s -> new SpecialistSummaryResponse(
                         s.getId(), s.getName(), s.getSpecialty(), s.getQualificationLevel(), s.getPriceAmount()))
                 .collect(Collectors.toList());

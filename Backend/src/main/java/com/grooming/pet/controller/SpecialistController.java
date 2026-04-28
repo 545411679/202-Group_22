@@ -7,6 +7,8 @@ import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 
 @RestController
@@ -53,8 +55,11 @@ public class SpecialistController {
     public ResponseEntity<List<SpecialistSummaryResponse>> search(
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String category,
-            @RequestParam(required = false) String level) {
-        return ResponseEntity.ok(specialistService.search(name, category, level));
+            @RequestParam(required = false) String level,
+            @RequestParam(required = false) LocalDate slotDate,
+            @RequestParam(required = false) LocalTime startTime,
+            @RequestParam(required = false) LocalTime endTime) {
+        return ResponseEntity.ok(specialistService.search(name, category, level, slotDate, startTime, endTime));
     }
 
     @GetMapping("/{id}/schedule")
