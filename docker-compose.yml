@@ -1,0 +1,45 @@
+services:
+  db:
+    image: docker.1panel.live/library/mysql:8
+    restart: always
+    environment:
+      MYSQL_DATABASE: consult_db
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_USER: ${SPRING_DATASOURCE_USERNAME}
+      MYSQL_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    restart: always
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    expose:
+      - "8080"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend.local
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_started
+
+volumes:
+  uploads:
+  mysql_data:

@@ -1,0 +1,782 @@
+================================================================
+DEPLOY_CHANGES.txt
+Running log of files modified in THIS conversation.
+Purpose: re-upload the listed files to Aliyun Docker host and rebuild.
+Session started: 2026-05-05
+================================================================
+
+HOW TO READ THIS FILE
+- Each entry = one file changed in this session.
+- "Path"     : repo-relative path (use this when scp-ing to Aliyun).
+- "Target"  : which Docker image/service is affected (backend / frontend / compose / nginx / env).
+- "Action"  : created | modified | deleted | renamed.
+- "Summary" : one-line description of WHAT changed.
+- "Why"     : reason the change was made.
+- "Rebuild" : exact docker / compose command needed after upload.
+
+================================================================
+AFFECTED IMAGES (fill in as we go)
+================================================================
+[x] backend     -> rebuild via: docker compose build backend  && docker compose up -d backend
+[x] frontend    -> rebuild via: docker compose build frontend && docker compose up -d frontend
+[ ] nginx/conf  -> reload  via: docker compose restart frontend   (nginx.conf is baked into frontend image)
+[ ] compose     -> apply   via: docker compose up -d
+[ ] env only    -> apply   via: docker compose up -d  (recreates affected containers)
+
+NOTE on A.1 entry: only the frontend image needs rebuild. Backend is unchanged.
+Marked [x] backend above only because we will ship A.2+ backend edits in the
+same deploy window — clear the tick if you deploy A.1 alone.
+
+================================================================
+CHANGE ENTRIES
+================================================================
+
+----------------------------------------------------------------
+[A.1] Auth UI — specialist signup entry + two-step wizard
+Date:   2026-05-05
+Target: frontend image only
+----------------------------------------------------------------
+
+Path:    FrontEnd/pages/specialist/profile-form.js
+Action:  created
+Summary: Shared specialist-profile form module. Exports
+         profileFieldsHtml(), readProfileFields(), loadCategories(),
+         QUALIFICATION_LEVELS. Single source of truth for the
+         specialist profile fields.
+Why:     Both the registration wizard (step 2) and the Edit Profile
+         page render the same fields. Centralising them means any
+         future field change (add/rename/reorder) is made once.
+
+Path:    FrontEnd/pages/register-specialist.js
+Action:  created
+Summary: Two-step wizard for specialist registration.
+         Step 1 = name/email/password -> POST /api/auth/register
+                                       -> POST /api/auth/login (auto-login)
+         Step 2 = specialist profile fields (from profile-form.js)
+                  with "Skip for now" link in the top-right.
+         Skip shows a confirm() dialog mentioning the "specialist
+         talent pool (人才池)" and routes to the specialist dashboard.
+Why:     Replaces the buried role dropdown with a clear, guided
+         signup path for professionals.
+
+Path:    FrontEnd/pages/login.js
+Action:  modified
+Summary: Replaced the footer "No account? Register" link with two
+         prominent CTAs under a "New here?" divider:
+           - "Create customer account" (#/register)
+           - "Join as a specialist →" (#/register/specialist)
+Why:     Specialists need a visible entry point from the login page.
+
+Path:    FrontEnd/pages/register.js
+Action:  modified
+Summary: Removed the Role <select> (Customer/Specialist). Page now
+         only creates CLIENT accounts. Header is now "Create your
+         customer account". Added footer link "Are you a
+         professional? Join as a specialist →".
+Why:     Role is now implied by the entry path; removes ambiguity
+         and duplication with the new specialist wizard.
+
+Path:    FrontEnd/pages/specialist/edit-profile.js
+Action:  modified
+Summary: Refactored the edit form to use profileFieldsHtml() and
+         readProfileFields() from the new shared module. Removed
+         direct categoryApi import (now via loadCategories()).
+         No behaviour change for the user.
+Why:     Keeps the edit page in sync with the wizard step 2.
+
+Path:    FrontEnd/pages/specialist/dashboard.js
+Action:  modified
+Summary: Dashboard now also fetches the specialist's own profile.
+         If no profile exists, renders an orange-accent "Complete
+         your profile" banner at the top with a CTA to
+         #/specialist/profile.
+Why:     Supports the "Skip for now" flow from the wizard — the
+         user lands on the dashboard and immediately sees the
+         next action they need to take.
+
+Path:    FrontEnd/app.js
+Action:  modified
+Summary: Added route "/register/specialist" -> register-specialist.js
+         and added "/register/specialist" to guestRoutes so
+         non-authenticated users can reach it.
+Why:     Needed to expose the new wizard page.
+
+Rebuild command (A.1 only):
+  docker compose build frontend && docker compose up -d frontend
+
+Smoke test after deploy:
+  1. Open site while logged out.
+  2. Login page should show "Create customer account" + "Join as a specialist →".
+  3. Click "Join as a specialist" -> 2-step stepper visible.
+  4. Fill step 1 -> advances to step 2 (no manual login needed).
+  5. Top-right "Skip for now" -> confirm dialog -> dashboard shows
+     the orange "Complete your profile" banner.
+  6. Or: fill step 2 fields -> toast "Profile submitted for review"
+     -> dashboard (no banner, since profile now exists).
+
+
+----------------------------------------------------------------
+[A.1-mod] Follow-up: modal, certificates, hourly rate, slot scope, fee math
+Date:   2026-05-05
+Target: frontend image + backend image
+----------------------------------------------------------------
+
+Path:    FrontEnd/pages/register-specialist.js
+Action:  modified
+Summary: Replaced browser confirm() with an in-page modal overlay
+         when "Skip for now" is clicked. New text:
+           "Your profile will join our specialists pool only after
+            you submit a complete profile. You can finish it any
+            time from your dashboard."
+         Buttons: [Cancel] [Skip →]. Clicking the backdrop cancels.
+         Also now calls bindProfileFormEvents() so the certificate
+         upload wiring works in the wizard's step 2.
+Why:     User preference — no browser-level notification.
+
+Path:    FrontEnd/api.js
+Action:  modified
+Summary: Added fileApi with upload(file) (multipart, bypasses the
+         JSON request() helper) and url(filename) helper.
+Why:     Needed to hit POST /api/files/upload with multipart form
+         data; the generic request() only sends JSON.
+
+Path:    FrontEnd/pages/specialist/profile-form.js
+Action:  modified (rewritten)
+Summary:
+  - Renamed label "Fee per session (¥)" -> "Fee per hour (¥)".
+  - Added a "Certificates" section: file input + Upload button,
+    chips for existing certs with Remove buttons.
+  - Exports new bindProfileFormEvents(container) that wires the
+    upload + remove interactions.
+  - readProfileFields() now also collects certificates (array of
+    filenames) into the payload.
+Why:     Keeps the form as a single source of truth — both the
+         wizard step 2 and the Edit Profile page inherit the new
+         fields/labels automatically.
+
+Path:    FrontEnd/pages/specialist/edit-profile.js
+Action:  modified
+Summary:
+  - View card now shows "¥X / hour" (was "¥X") and lists the
+    uploaded certificates as clickable chips (link to
+    /api/files/{filename}).
+  - Calls bindProfileFormEvents() after rendering the edit form.
+Why:     Surface the new hourly-rate label + cert uploads on the
+         specialist's own profile view.
+
+Path:    FrontEnd/pages/shared/specialist-public.js
+Action:  modified
+Summary: Tag changed from "¥X / session" to "¥X / hour" on the
+         public profile page.
+Why:     Match the new pricing model visible to clients.
+
+Path:    FrontEnd/pages/customer/search.js
+Action:  modified
+Summary: Search-result cards now show "¥X / hour" instead of
+         "¥X / session".
+Why:     Same as above.
+
+Path:    FrontEnd/pages/specialist/slot-management.js
+Action:  modified
+Summary: Add-slot form replaced the single datetime-local with
+         three inputs: Date, Start time, End time. Sends
+         { slotDate, startTime, endTime } (matches existing
+         SlotCreateRequest). Slot cards now display the range
+         "DD/MM/YYYY · HH:MM – HH:MM".
+Why:     Slots need a time scope (start + end) so the client can
+         see duration and the system can compute the fee. Backend
+         already accepts this shape.
+
+Path:    FrontEnd/pages/customer/booking-wizard.js
+Action:  modified
+Summary:
+  - Slot cards show the full date + range ("DD/MM · HH:MM – HH:MM")
+    in step 1.
+  - Review table (step 3) now shows Duration, Hourly rate, and a
+    computed Total fee = hours * rate. Falls back to "—" if the
+    specialist has no rate or the slot has no endTime.
+Why:     Match the new hourly-rate pricing; user sees the math
+         before confirming.
+
+Path:    Backend/src/main/java/com/grooming/pet/service/BookingService.java
+Action:  modified
+Summary:
+  - Added imports: BigDecimal, RoundingMode, Duration, LocalDateTime.
+  - createBooking() now sets totalFee = calculateTotalFee(rate, slots)
+    instead of copying priceAmount verbatim.
+  - New private method calculateTotalFee(hourlyRate, slots): sums
+    duration across all slots (minutes), converts to hours (scale 4,
+    HALF_UP), multiplies by the hourly rate, and returns scale-2
+    rounded BigDecimal. Guards hourlyRate == null -> 0.
+Why:     Specialist.priceAmount is now interpreted as an hourly
+         rate; total fee must be (hours * rate).
+
+Rebuild command (A.1-mod):
+  docker compose build backend frontend && docker compose up -d backend frontend
+
+Smoke test after deploy:
+  1. Specialist login -> "My Slots" -> add slot with Date + Start + End.
+     Card should display "... · HH:MM – HH:MM".
+  2. Client searches a specialist -> price tag reads "¥X / hour".
+  3. Client opens booking wizard -> step 1 slot shows range.
+     Step 3 review shows Duration, Hourly rate, Total fee (= hours * rate).
+  4. Confirm booking -> DB booking.total_fee equals the computed amount.
+  5. Specialist profile -> Edit -> upload a PDF/image -> Save.
+     Public profile shows the certificate link; Edit view card shows it too.
+  6. Registration wizard step 2 -> click "Skip for now" ->
+     in-page modal (not the browser dialog) appears; clicking
+     outside or Cancel dismisses it; Skip → routes to dashboard.
+
+
+----------------------------------------------------------------
+[A.3] Specialist profile management — fixes & polish
+Date:   2026-05-05
+Target: backend image + frontend image
+----------------------------------------------------------------
+
+Path:    FrontEnd/api.js
+Action:  modified
+Summary: P0 fix. adminApi.approveProfile / rejectProfile were
+         sending {status: 'APPROVED'/'REJECTED'} but ReviewRequest
+         expects {action: 'APPROVE'/'REJECT'}. Changed the payload
+         keys/values so admin approval actually works.
+Why:     Backend was rejecting every approve/reject call with 400
+         (@NotBlank action). Pending queue could never be cleared.
+
+Path:    Backend/src/main/java/com/grooming/pet/model/Specialist.java
+Action:  modified
+Summary: Added `rejectionReason` TEXT column (nullable) with
+         getter/setter. Hibernate ddl-auto=update will add the
+         column automatically on next boot.
+Why:     Admin previously required a rejection reason but it was
+         discarded. Now persisted so the specialist can see it.
+
+Path:    Backend/src/main/java/com/grooming/pet/dto/response/SpecialistProfileResponse.java
+Action:  modified
+Summary: Added `rejectionReason` field + extended constructor
+         signature (was 8-arg, now 9-arg).
+Why:     Surface the rejection reason to the frontend.
+
+Path:    Backend/src/main/java/com/grooming/pet/service/SpecialistService.java
+Action:  modified
+Summary:
+  - updateProfile() now only re-PENDs the specialist when a
+    *material* field changes (specialty, qualificationLevel,
+    certificates) OR the previous status was REJECTED. Cosmetic
+    edits (name, bio, fee) keep the current status.
+  - updateProfile() now also enforces uniqueness on
+    (name, specialty) when those fields change (was only checked
+    on create).
+  - reviewProfile() saves the rejection reason on REJECT and
+    clears it on APPROVE.
+  - toProfileResponse() now passes rejectionReason through.
+Why:     Three combined fixes:
+         (1) avoid demoting active specialists for typo edits;
+         (2) persist the reason admin already requires;
+         (3) keep name+specialty uniqueness consistent
+             between create and update paths.
+
+Path:    FrontEnd/status.js
+Action:  created
+Summary: Centralised status palette: SPECIALIST_STATUS,
+         BOOKING_STATUS, SLOT_STATUS. Each entry has
+         {tag, label, color, bg, msg}. Helpers
+         specialistStatusTagHtml / bookingStatusTagHtml.
+Why:     Consistent colors per status across all pages —
+         pages no longer hard-code their own tag-color maps.
+
+Path:    FrontEnd/pages/specialist/dashboard.js
+Action:  modified
+Summary: Banner is now status-aware:
+           null     -> orange "Complete your profile" + CTA
+           PENDING  -> amber "Profile under review"
+           REJECTED -> red "Profile rejected" + reason in a
+                       sub-card + "Update & resubmit" CTA
+           PAUSED   -> blue "Profile paused" + manage CTA
+           ACTIVE   -> no banner
+         Uses SPECIALIST_STATUS for the colors. Booking status
+         tag in the recent-bookings table now uses the shared
+         bookingStatusTagHtml().
+Why:     Previously, after a specialist submitted their profile
+         the dashboard had zero feedback ("did it save?").
+         Rejection reason was unreachable to the rejected user.
+
+Path:    FrontEnd/pages/specialist/edit-profile.js
+Action:  modified
+Summary: Status card now uses SPECIALIST_STATUS for colour and
+         label; adds a coloured left border + bg matching the
+         status. When status is REJECTED, shows an inset card
+         with the admin's rejection reason.
+Why:     Consistency with the dashboard banner; close the
+         rejection-reason feedback loop on the edit page too.
+
+Path:    FrontEnd/pages/shared/specialist-public.js
+Action:  modified
+Summary: Added a "Certificates" card showing each uploaded
+         certificate as a clickable chip linking to
+         /api/files/{filename}. Hidden when no certificates.
+Why:     Specialists upload certificates and admin sees them at
+         approval, but they were invisible to clients —
+         eliminating the trust signal they exist for.
+
+Rebuild command (A.3):
+  docker compose build backend frontend && docker compose up -d backend frontend
+
+Smoke test after deploy:
+  1. Admin login -> Profile Approvals -> click Approve on a
+     pending profile -> 200 OK (was 400 before). Specialist's
+     status flips to ACTIVE.
+  2. Admin clicks Reject on another -> enter reason "Bio is
+     too short" -> save. Specialist logs in -> dashboard shows
+     red banner with "Reason: Bio is too short" + Update CTA.
+  3. Specialist edits the bio (cosmetic field) and saves ->
+     status stays ACTIVE (does NOT drop back to PENDING).
+  4. Specialist changes specialty (material field) and saves ->
+     status drops to PENDING again.
+  5. Open a public specialist profile (logged out or as client)
+     -> if they have certs, the "Certificates" card shows
+     clickable file links.
+
+================================================================
+DEPLOY CHECKLIST (run on Aliyun host after uploading)
+================================================================
+1. cd <project root on host>
+2. Pull / scp the files listed above into the same relative paths.
+3. For each ticked image in "AFFECTED IMAGES", run its rebuild command.
+4. Verify:
+     docker compose ps          # all services healthy
+     docker compose logs -f --tail=100 backend
+     docker compose logs -f --tail=100 frontend
+5. Smoke test: open the site, log in, hit one booking flow.
+
+================================================================
+END OF FILE
+================================================================
+
+----------------------------------------------------------------
+[A.10] Announcements — real feature (model + read tracking + consumer UI)
+Date:   2026-05-05
+Target: backend image + frontend image
+----------------------------------------------------------------
+
+Path:    Backend/src/main/java/com/grooming/pet/model/Announcement.java
+Action:  modified
+Summary: Added imageUrl (nullable), audience enum (ALL/CLIENT/
+         SPECIALIST, default ALL) and published bool (default
+         true). Existing title/body/createdAt/updatedAt preserved.
+Why:     Audience targeting + draft mode + image attachment.
+         Hibernate ddl-auto=update will add the columns.
+
+Path:    Backend/src/main/java/com/grooming/pet/model/AnnouncementRead.java
+Action:  created
+Summary: Junction entity (id, userId, announcementId, readAt) with
+         unique constraint on (user_id, announcement_id).
+Why:     Per-user read state survives device/browser switches.
+
+Path:    Backend/src/main/java/com/grooming/pet/repository/AnnouncementReadRepository.java
+Action:  created
+Summary: JpaRepository with findByUserId and
+         existsByUserIdAndAnnouncementId.
+Why:     Needed by AnnouncementService.
+
+Path:    Backend/src/main/java/com/grooming/pet/repository/AnnouncementRepository.java
+Action:  modified
+Summary: Added findByPublishedTrueOrderByCreatedAtDesc.
+Why:     Consumer feed only returns published items, newest first.
+
+Path:    Backend/src/main/java/com/grooming/pet/dto/request/AnnouncementRequest.java
+Action:  modified
+Summary: Added imageUrl, audience (String, validated to enum in
+         service), published (Boolean) fields.
+Why:     Admin form sends the new fields.
+
+Path:    Backend/src/main/java/com/grooming/pet/dto/response/AnnouncementResponse.java
+Action:  modified
+Summary: Constructor now (id, title, body, imageUrl, audience,
+         published, unread, createdAt). The "unread" flag is
+         null for admin list, true/false for consumer list.
+Why:     Single DTO covers both admin + consumer views.
+
+Path:    Backend/src/main/java/com/grooming/pet/service/AnnouncementService.java
+Action:  modified
+Summary:
+  - getAllAnnouncements() now requires ADMIN (was unguarded).
+  - New getAnnouncementsForCurrentUser(): filters by published
+    + audience match (ALL or matches caller role) and computes
+    unread per user via AnnouncementReadRepository.
+  - New markAsRead(id): idempotent insert into announcement_reads.
+  - create/update apply imageUrl/audience/published; invalid
+    audience throws BadRequestException.
+Why:     Implements audience scoping + per-user read tracking.
+
+Path:    Backend/src/main/java/com/grooming/pet/controller/AnnouncementController.java
+Action:  created
+Summary: New @RequestMapping("/api/announcements") with:
+           GET  /me              -> list for current user
+           POST /{id}/read       -> mark as read
+         Both require auth (default rule); no role gating beyond
+         that — service filters by audience.
+Why:     Public consumer endpoints, distinct from admin CRUD
+         which stays at /api/admin/announcements.
+
+Path:    FrontEnd/api.js
+Action:  modified
+Summary: Added announcementApi { getMine, markRead }.
+Why:     Frontend client for the new public endpoints.
+
+Path:    FrontEnd/pages/admin/announcements.js
+Action:  modified (rewritten)
+Summary:
+  - P0 fix: form/table now use "body" (was "content"). Save was
+    silently failing with 400.
+  - Added Audience selector (Everyone/Clients/Specialists),
+    Published toggle, image upload (multipart -> filename), and
+    image preview/remove inside the modal.
+Why:     Admin UI was broken; also surfaces the new fields.
+
+Path:    FrontEnd/pages/shared/announcements-card.js
+Action:  created
+Summary:
+  - renderAnnouncementsCard(host, {limit, showViewAll}): fetches
+    /api/announcements/me, lists items, animated "sparkle"
+    (pulse + shimmer) on unread cards with an orange dot.
+  - openAnnouncementModal(ann, onOpened): full modal with image
+    + body. Marks-read on open; sparkle/dot/badge update live.
+  - injectSparkleStyle(): adds CSS keyframes + .ann-item rules
+    once per page load.
+Why:     Shared component reused by client + specialist
+         dashboards and the full history page.
+
+Path:    FrontEnd/pages/announcements.js
+Action:  created
+Summary: Full history page route (/announcements). Reuses
+         renderAnnouncementsCard with limit:0 + no "View all".
+Why:     "Past announcement list" requirement.
+
+Path:    FrontEnd/pages/customer/dashboard.js
+Action:  modified
+Summary: Imports renderAnnouncementsCard, adds
+         <div id="announcements-host"> at top of dashboard,
+         calls renderAnnouncementsCard(host) after main render.
+Why:     Client sees announcements when landing on dashboard.
+
+Path:    FrontEnd/pages/specialist/dashboard.js
+Action:  modified
+Summary: Same as above — adds announcements-host between the
+         profile banner and the stat cards, populates after main
+         render.
+Why:     Specialist sees announcements on dashboard.
+
+Path:    FrontEnd/app.js
+Action:  modified
+Summary: Added route /announcements -> pages/announcements.js.
+         Auth-gated automatically (not in guestRoutes).
+Why:     "View all →" link target + standalone history page.
+
+
+----------------------------------------------------------------
+[A.3b] Admin specialist profile — full-detail modal in approvals
+Date:   2026-05-05
+Target: frontend image only
+----------------------------------------------------------------
+
+Path:    FrontEnd/pages/admin/profile-approval.js
+Action:  modified (rewritten)
+Summary:
+  - Added "View" button per row (now: View | Approve | Reject).
+  - New detailModal shows full profile: avatar, name, specialty,
+    qualification level, hourly fee tag, current status, full
+    bio (pre-wrap), all uploaded certificates as clickable
+    chips, and the previous rejection reason if present.
+  - Approve/Reject buttons also live inside the modal footer
+    (approve closes modal + reloads; reject opens reason modal).
+  - Detail modal closes on backdrop click / X / Close button.
+  - Truncated Bio column dropped from the row view; replaced by
+    a Certs count column (because the full content is now in
+    the modal).
+Why:     Previously admin only saw truncated bio + name/level/
+         fee in a table — no way to see certificates or full
+         bio before clicking Approve. Required for informed
+         review.
+
+Rebuild command (A.10 + A.3b):
+  docker compose build backend frontend && docker compose up -d backend frontend
+
+Smoke test after deploy:
+  1. Admin logs in -> Announcements -> create one with
+     audience=Clients, attach an image, Published=on.
+     Table now shows the body (not blank), audience tag, status
+     tag, image link.
+  2. Client logs in -> dashboard top has 📢 Announcements card
+     with "1 new" badge; the item has a glowing/shimmering
+     border + orange dot. Click -> modal with image + body.
+     After closing, dot/glow are gone and badge clears.
+  3. Specialist logs in -> the CLIENT-only announcement is NOT
+     visible. Create one with audience=Specialists -> visible
+     to specialist only. Audience=Everyone -> visible to both.
+  4. Click "View all →" -> /announcements page lists every
+     visible announcement (no limit).
+  5. Refresh client browser -> previously-read ones do NOT
+     sparkle again (read state is server-side).
+  6. Admin -> Profile Approvals -> click View on a pending
+     row. Modal shows full bio, certificate chips that open in
+     new tab, fee, level. Approve from modal -> 201/200, row
+     disappears, specialist becomes ACTIVE.
+  7. Admin -> Profile Approvals -> View -> Reject -> reason
+     modal -> save. Row disappears; reason persists on the
+     specialist's record.
+
+
+----------------------------------------------------------------
+[A.10-fix] Announcements admin — clearer publish UX + bug fix
+Date:   2026-05-05
+Target: frontend image only
+----------------------------------------------------------------
+
+Path:    FrontEnd/pages/admin/announcements.js
+Action:  modified (rewritten)
+Summary:
+  - BUG FIX: modal used to lose unsaved form edits (title, body,
+    visibility) whenever the user clicked Upload / Remove image,
+    because those actions re-rendered the modal from the stale
+    editModal snapshot. Added captureFormState() invoked before
+    every re-render (visibility click, upload, remove, save).
+  - Collapsed the two confusing controls (Audience dropdown +
+    "Published" checkbox) into ONE prominent "Visibility"
+    section at the top of the modal with 4 radio cards:
+      · Draft (hidden from users)
+      · Publish to Everyone
+      · Publish to Clients
+      · Publish to Specialists
+    Each card has a description line explaining what it does.
+    Selected card is highlighted in orange.
+  - Save button label is now dynamic: "Save as Draft" vs
+    "Save & Publish" — admin sees what the action will do.
+  - Help text under the header explains draft vs published in
+    one line; another help line inside the modal header.
+  - Table row now has an inline Publish / Unpublish button
+    (toggles the published flag without opening the modal).
+  - Visibility column replaced the prior "Audience + Status"
+    pair with a single combined tag:
+      Draft | Published · Everyone | Published · Clients |
+      Published · Specialists
+Why:     User couldn't figure out how to publish — the checkbox
+         was buried below the image upload, and any image edit
+         silently reverted the "Published" tick. Both problems
+         fixed in one pass.
+
+Rebuild command (A.10-fix):
+  docker compose build frontend && docker compose up -d frontend
+
+Smoke test after deploy:
+  1. Admin -> Announcements -> + New announcement.
+     Modal opens with Visibility = Draft (default).
+     Save button reads "Save as Draft".
+  2. Click "Publish to Everyone" radio card -> button label
+     flips to "Save & Publish". Fill title + body -> Save ->
+     row appears with tag "Published · Everyone".
+  3. Row "Unpublish" button -> tag flips to "Draft".
+  4. Row "Publish" button -> tag flips back to previous
+     audience ("Everyone" unless audience was changed).
+  5. Edit an existing row -> modal pre-selects the correct
+     visibility card.
+  6. Edit: change title, pick "Publish to Clients", upload an
+     image. Confirm all three edits are preserved on Save
+     (this was the bug — uploads used to reset the other
+     fields).
+
+
+----------------------------------------------------------------
+[A.7] Booking lifecycle — cleanup, reject, 24h cutoff, review card
+Date:   2026-05-05
+Target: backend image + frontend image
+----------------------------------------------------------------
+
+Path:    Backend/src/main/java/com/grooming/pet/model/Booking.java
+Action:  modified
+Summary: Removed unused COMPLETED status. Final enum:
+         PENDING, CONFIRMED, REJECTED, CANCELLED, CONDUCTED, REVIEWED.
+Why:     COMPLETED was never written anywhere; the dead branch in
+         BookingService that "set status to COMPLETED" actually
+         set CONDUCTED. Cleaner lifecycle.
+
+Path:    Backend/src/main/java/com/grooming/pet/service/BookingService.java
+Action:  modified
+Summary:
+  - Dropped the dead COMPLETE action branch.
+  - CANCEL now enforces a 24h cutoff for BOTH parties: if the
+    earliest slot start is within 24 hours, return 400. New
+    helper earliestSlotStart(booking).
+Why:     User-confirmed UX: both customer and specialist must
+         cancel at least 24h before the session.
+
+Path:    Backend/src/main/java/com/grooming/pet/service/ReviewService.java
+Action:  modified
+Summary: Tightened submit guard to status == CONDUCTED only.
+         Duplicate-review block is still on existsByBooking,
+         so reviewing a REVIEWED booking is now correctly
+         rejected by the status check (consistent error).
+Why:     The previous guard accepted REVIEWED, which would
+         only fail later on existsByBooking — confusing path.
+
+Path:    Backend/src/main/java/com/grooming/pet/dto/response/AppointmentDetailResponse.java
+Action:  modified
+Summary: Added 4 fields: hasReview (Boolean), reviewRating
+         (Integer), reviewComment (String), reviewedAt
+         (LocalDateTime). Constructor now 19-arg.
+Why:     Customer detail page needs to show the review inline
+         once it's been submitted.
+
+Path:    Backend/src/main/java/com/grooming/pet/service/DashboardService.java
+Action:  modified
+Summary: Injected ReviewRepository. getAppointmentDetail() now
+         loads Review via findByBooking and passes rating/
+         comment/timestamp to the DTO.
+Why:     Surface the review payload to the customer's session
+         detail page.
+
+Path:    FrontEnd/pages/shared/specialist-public.js
+Action:  modified
+Summary: Slot list filter now: status === 'AVAILABLE' &&
+         !s.bookingStatus. Previously a slot with an active
+         PENDING/CONFIRMED booking could leak through if its
+         status flag wasn't UNAVAILABLE.
+Why:     P0 - already-booked slots were visible/clickable from
+         the public profile. SlotResponse already exposed
+         bookingStatus; we just weren't using it.
+
+Path:    FrontEnd/pages/customer/booking-wizard.js
+Action:  modified
+Summary: Same fix as above — wizard step 1 only shows truly
+         free slots (status==='AVAILABLE' && !bookingStatus).
+Why:     Same root cause as shared/specialist-public.js.
+
+Path:    FrontEnd/pages/specialist/session-requests.js
+Action:  modified
+Summary:
+  - Imports bookingStatusTagHtml from /status.js (consistent
+    palette with the rest of the app; drops the local map).
+  - Filter dropdown now shows REVIEWED, drops COMPLETED.
+  - PENDING rows: Confirm + Reject (NEW — now actually wired
+    to action=REJECT).
+  - CONFIRMED rows: Mark Conducted + Cancel (was Mark
+    Conducted only — specialists need to cancel too).
+  - Cancel confirm dialog warns about the 24h backend cutoff.
+Why:     Specialists could not reject a booking from the UI
+         even though the backend supported it; and the
+         specialist had no path to cancel a CONFIRMED booking.
+
+Path:    FrontEnd/pages/customer/session-detail.js
+Action:  modified (rewritten)
+Summary:
+  - Detail card layout cleaned: Specialist | Specialty |
+    Date/Time | Duration | Total fee (with hours×rate
+    breakdown) | Contact | Topic | Notes | optional meeting
+    info. Dropped the duplicate Status row (status tag is
+    already in the card header).
+  - Cancel button is now disabled within 24h of slot start
+    (with explanatory help text). Backend still re-checks.
+  - NEW separate "Your review" card, shown whenever the
+    booking is CONDUCTED or REVIEWED:
+      * If reviewed: read-only stars + comment + timestamp.
+      * If conducted but not reviewed: amber-accent card
+        with stars input + comment + Submit button.
+    Replaces the prior "form sometimes appears, never shows
+    submitted review" behavior.
+  - Stars are clickable Unicode glyphs (no buttons), matches
+    a normal review widget.
+Why:     User asked for: separate review card always visible
+         once CONDUCTED; show submitted review when present;
+         handle pricing/duration display; better detail UX.
+
+Rebuild command (A.7):
+  docker compose build backend frontend && docker compose up -d backend frontend
+
+Smoke test after deploy:
+  1. Client opens specialist's public profile -> only slots
+     with NO active booking are listed. (Prev: a slot already
+     PENDING by another client could appear if its slot.status
+     wasn't UNAVAILABLE.)
+  2. Client books -> specialist gets request -> click Reject
+     in Session Requests -> 200, slot returns to AVAILABLE
+     in /api/specialists/{id}/schedule.
+  3. Client books a slot starting in 6 hours -> session
+     detail Cancel button is disabled, with help text.
+     Same for the specialist's Cancel button -> 400 if they
+     bypass the UI.
+  4. Specialist confirms -> conducts. Customer detail page
+     now shows an amber "Your review" card with star widget
+     + comment box. Submit -> card flips to read-only stars
+     + comment + timestamp. Booking status flips to REVIEWED.
+  5. Try to submit a review on a non-CONDUCTED booking ->
+     400 "Only conducted bookings can be reviewed."
+  6. Try the COMPLETE action via curl -> 400 "Invalid action."
+
+═══════════════════════════════════════════════════════════════════════
+A.0 — Brand rename (Booking → Consilium) + new landing/home split
+═══════════════════════════════════════════════════════════════════════
+Date: 2026-05-05
+
+WHAT CHANGED
+  Brand "Booking" → "Consilium" (split: Con + silium, two-tone via
+  existing .auth-logo span / .sidebar-logo span CSS — no CSS edits).
+
+  Routing restructured:
+    /        → NEW pages/home.js (one-screen 60/40 split, no scroll on PC)
+    /about   → old marketing page (renamed from pages/landing.js)
+    /login, /register, /register/specialist — unchanged
+  /about added to guestRoutes; logged-in users hitting / now redirect to
+  their role home (same behavior already on /login).
+
+FRONTEND FILES
+  Modified:
+    FrontEnd/index.html              <title>Consilium</title>
+    FrontEnd/app.js                  routes: '/' → home.js, '/about' →
+                                     about.js; guestRoutes adds '/about';
+                                     logged-in redirect adds '/'
+                                     sidebar-logo: Con<span>silium</span>
+    FrontEnd/pages/login.js          auth-logo: Con<span>silium</span>
+    FrontEnd/pages/register.js       auth-logo: Con<span>silium</span>
+    FrontEnd/pages/register-specialist.js
+                                     auth-logo: Con<span>silium</span>
+
+  Renamed:
+    FrontEnd/pages/landing.js  →  FrontEnd/pages/about.js   (no internal
+                                     edits; brand link href="#/" now
+                                     correctly points at the new home)
+
+  Created:
+    FrontEnd/pages/home.js     non-scroll 60/40 grid:
+       LEFT  60% — top: hero (hero.jpg + veil + corner marks + lead +
+                  zoomIn animation); bottom: 3 flip step cards
+                  (rotateY hover, photo→dark-back with paragraph)
+       RIGHT 40% — 1fr / 2.4fr / 1fr rows:
+                   • Specialists strip (4 live cards, opacity .82+
+                     saturate .85 → opacity 1 + saturate 1.18 +
+                     translateY/scale on hover, click → /login)
+                   • Login card (same fields/buttons/wiring as
+                     /login: authApi.login → auth.login →
+                     auth.roleHome())
+                   • Reviews strip (4 live mini quote cards, ★ rating)
+       Mobile fallback (<1024px): becomes single-column scrollable.
+
+DATA WIRING
+  Specialists: specialistApi.search({}) → shuffle → take 4
+               (fallback: 4 hard-coded entries when backend offline)
+  Reviews:     reviewApi.getRecentReviews() → shuffle → take 4
+               (fallback: 4 hard-coded reviews)
+  All buttons live: Sign in, Create customer account, Join as specialist,
+  Product tour link → /about, Strip "Explore all/Read more" → /about
+  anchored sections.
+
+REBUILD
+  docker compose build frontend && docker compose up -d frontend
+
+SMOKE TEST
+  1. Visit /            → see new home, no page scroll on ≥1024px width
+  2. Hover step card    → 3D flip reveals dark back with paragraph
+  3. Hover specialist   → fades up, gains color/saturation, click → /login
+  4. Submit login here  → succeeds, redirects to role home (same as /login)
+  5. Click "Product tour" or strip "Explore all" → lands on /about
+  6. Visit /about       → old marketing page intact, brand link → /
+  7. All sidebar/login/register pages now read "Consilium"
