@@ -37,6 +37,7 @@ export const specialistApi = {
   getOwnProfile:   ()    => api.get('/specialists/profile'),
   createProfile:   data  => api.post('/specialists/profile', data),
   updateProfile:   data  => api.patch('/specialists/profile', data),
+  updateStatus:    data  => api.patch('/specialists/profile/status', data),
   getSlots:        ()    => api.get('/specialists/slots'),
   addSlot:         data  => api.post('/specialists/slots', data),
   markUnavailable: id    => api.patch(`/specialists/slots/${id}/unavailable`),
